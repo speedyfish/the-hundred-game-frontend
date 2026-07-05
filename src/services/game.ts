@@ -6,5 +6,8 @@ export type CreateGameResponse = {
 };
 
 export const GameService = {
-  createGame: () => apiClient<CreateGameResponse>("/api/games"),
+  createGame: () =>
+    apiClient<CreateGameResponse>("/api/games", {
+      method: "POST",
+    }),
 };

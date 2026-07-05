@@ -8,11 +8,9 @@ export async function apiClient<T>(
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
 
-  // Set default secure headers (token remains private on Next.js server)
-  const headers = {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.EXTERNAL_API_SECRET}`,
-    ...options.headers,
+    ...(options.headers || {}),
   };
 
   const response = await fetch(url, { ...options, headers });
