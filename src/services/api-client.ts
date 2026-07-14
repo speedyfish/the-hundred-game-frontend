@@ -1,6 +1,6 @@
 // src/services/api-client.ts
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000";
 
 export async function apiClient<T>(
   endpoint: string,

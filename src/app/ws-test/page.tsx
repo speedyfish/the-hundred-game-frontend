@@ -24,7 +24,7 @@ export default function WsTestPage() {
 
   useEffect(() => {
     const c = new Client({
-      webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
+      webSocketFactory: () => new SockJS("http://localhost:5000/ws"),
       reconnectDelay: 5000,
       onConnect: () => {
         setConnected(true);

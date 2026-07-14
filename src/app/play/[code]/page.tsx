@@ -25,14 +25,14 @@ export default function GameRoomPage() {
     () => "player-" + Math.random().toString(36).slice(2, 8)
   );
   const [name, setName] = useState("");
-  const [guess, setGuess] = useState<number[]>([1, 1, 1, 1, 1]);
+  const [guess, setGuess] = useState<string[]>(["", "", "", "", ""]);
   const [messages, setMessages] = useState<GameStateResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const lastState = messages[messages.length - 1];
 
   const BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000";
 
   useEffect(() => {
     const c = new Client({
@@ -74,20 +74,34 @@ export default function GameRoomPage() {
     setError(null);
   };
 
-  const handleGuessChange = (index: number, value: number) => {
+  const handleGuessChange = (index: number, value: string) => {
+    // Optionally strip non-digits:
+    const cleaned = value.replace(/[^\d-]/g, ""); // allow digits and minus if you want
     setGuess((prev) => {
       const next = [...prev];
-      next[index] = value;
+      next[index] = cleaned;
       return next;
     });
   };
 
   const handleSendGuess = () => {
     if (!client || !connected || !joined) return;
+
+    if (guess.some((v) => v.trim() === "")) {
+      setError("Please fill all 5 numbers.");
+      return;
+    }
+
+    // Convert to numbers, treat empty as null or 0 per your game rules
+    const numericGuess = guess.map(
+      (v) => (v === "" ? 0 : Number(v)) // or throw/return early if invalid
+    );
+
     const payload = {
       playerId,
-      guess,
+      guess: numericGuess,
     };
+
     client.publish({
       destination: `/app/games/${code}/guess`,
       body: JSON.stringify(payload),
@@ -207,9 +221,8 @@ export default function GameRoomPage() {
       {joined && (
         <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-slate-100">
-              Your guess (5 numbers)
-            </h2>
+            <h2 className="text-sm font-medium text-slate-100">Your guess</h2>
+            <span>{guess.reduce((acc, cur) => acc + Number(cur), 0)}</span>
             <span className="text-xs text-slate-400">
               Player: <span className="font-mono">{playerId}</span>
             </span>
@@ -223,11 +236,10 @@ export default function GameRoomPage() {
               >
                 <span className="text-slate-400">#{idx + 1}</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={value}
-                  onChange={(e) =>
-                    handleGuessChange(idx, Number(e.target.value))
-                  }
+                  onChange={(e) => handleGuessChange(idx, e.target.value)}
                   className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-center text-sm text-slate-100"
                 />
               </div>
