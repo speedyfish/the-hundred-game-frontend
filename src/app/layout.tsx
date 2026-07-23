@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Autour_One, Geist, Geist_Mono, Jost } from "next/font/google";
 import "./globals.css";
-import { NavBar } from "./components/NavBar";
-import { Footer } from "./components/Footer";
+import { NavBar } from "./components/layout/NavBar";
+import { Footer } from "./components/layout/Footer";
 import { Shell } from "./components/Shell";
+
+const autour = Autour_One({
+  variable: "--font-autour",
+  subsets: ["latin"],
+  weight: "400",
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${autour.variable} ${geistMono.variable} h-full antialiased dark`}
     >
       {/* <NavBar /> */}
       <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">

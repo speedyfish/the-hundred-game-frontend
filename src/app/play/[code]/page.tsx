@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
+import { useGameSocket } from "@/hooks/useGameSocket";
+import CustomModal from "@/app/components/common/CustomModal";
 
 type GameStateResponse = {
   code: string;
@@ -11,67 +13,60 @@ type GameStateResponse = {
   round: number;
   bothGuessedThisRound: boolean;
   winnerId: string | null;
+  currentGuesses: Record<string, number[]>;
+  history: any[];
 };
 
+const NAME_KEY = "hundredgame:name";
+const PLAYER_ID_KEY = "hundredgame:playerId";
+
 export default function GameRoomPage() {
-  const params = useParams<{ code: string }>();
   const router = useRouter();
+
+  const params = useParams<{ code: string }>();
   const code = params.code;
 
-  const [client, setClient] = useState<Client | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [joined, setJoined] = useState(false);
-  const [playerId, setPlayerId] = useState(
-    () => "player-" + Math.random().toString(36).slice(2, 8)
-  );
+  const searchParams = useSearchParams();
+
+  const [playerId, setPlayerId] = useState("");
   const [name, setName] = useState("");
+  const [showNameModal, setShowNameModal] = useState(false);
   const [guess, setGuess] = useState<string[]>(["", "", "", "", ""]);
-  const [messages, setMessages] = useState<GameStateResponse[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
-  const lastState = messages[messages.length - 1];
+  const { connected, messages, error, join, sendGuess } = useGameSocket(code);
 
-  const BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000";
+  const lastState: GameStateResponse = messages[messages.length - 1];
+
+  const handleContinueName = () => {
+    if (!name.trim()) return;
+    join(playerId, name.trim());
+    setShowNameModal(false);
+  };
 
   useEffect(() => {
-    const c = new Client({
-      webSocketFactory: () => new SockJS(`${BASE_URL}/ws`),
-      reconnectDelay: 5000,
-      onConnect: () => {
-        setConnected(true);
-        setError(null);
-        c.subscribe(`/topic/games/${code}`, (message) => {
-          const body = JSON.parse(message.body) as GameStateResponse;
-          setMessages((prev) => [...prev, body]);
-        });
-      },
-      onStompError: (frame) => {
-        console.error("STOMP error", frame.headers["message"], frame.body);
-        setError("Connection error with game server.");
-      },
-    });
+    if (!connected) return;
+    if (typeof window === "undefined") return;
 
-    c.activate();
-    setClient(c);
+    const storedName = window.localStorage.getItem(NAME_KEY) ?? "";
+    const storedPlayerId =
+      window.localStorage.getItem(PLAYER_ID_KEY) ??
+      "player-" + Math.random().toString(36).slice(2, 8);
+    const needsJoin = searchParams.get("needsJoin") ?? "1";
 
-    return () => {
-      c.deactivate();
-    };
-  }, [code]);
+    setName(storedName);
+    setPlayerId(storedPlayerId);
 
-  const handleJoin = () => {
-    if (!client || !connected || joined) return;
-    const payload = {
-      playerId,
-      name: name || playerId,
-    };
-    client.publish({
-      destination: `/app/games/${code}/join`,
-      body: JSON.stringify(payload),
-    });
-    setJoined(true);
-    setError(null);
+    // if we don't have a name yet, show modal
+    if (!storedName) {
+      setShowNameModal(true);
+    } else if (needsJoin === "1") {
+      join(playerId, name.trim());
+    }
+  }, [connected, searchParams, join]);
+
+  const handleSendGuess = () => {
+    console.log("sending guess", guess);
+    sendGuess(playerId, guess);
   };
 
   const handleGuessChange = (index: number, value: string) => {
@@ -82,31 +77,6 @@ export default function GameRoomPage() {
       next[index] = cleaned;
       return next;
     });
-  };
-
-  const handleSendGuess = () => {
-    if (!client || !connected || !joined) return;
-
-    if (guess.some((v) => v.trim() === "")) {
-      setError("Please fill all 5 numbers.");
-      return;
-    }
-
-    // Convert to numbers, treat empty as null or 0 per your game rules
-    const numericGuess = guess.map(
-      (v) => (v === "" ? 0 : Number(v)) // or throw/return early if invalid
-    );
-
-    const payload = {
-      playerId,
-      guess: numericGuess,
-    };
-
-    client.publish({
-      destination: `/app/games/${code}/guess`,
-      body: JSON.stringify(payload),
-    });
-    setError(null);
   };
 
   const handleBackHome = () => {
@@ -183,89 +153,59 @@ export default function GameRoomPage() {
       )}
 
       {/* Join section */}
-      {!joined && (
+      {lastState && lastState.status == "WAITING_FOR_SECOND_PLAYER" && (
         <section className="max-w-md space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
-          <h2 className="text-sm font-medium text-slate-100">Join this game</h2>
-          <p className="text-xs text-slate-400">
-            Enter a name and join. Open this room in another browser/tab with a
-            different player ID to simulate your friend.
-          </p>
-          <label className="block text-xs text-slate-200">
-            Display name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={playerId}
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
-            />
-          </label>
-          <label className="block text-xs text-slate-200">
-            Player ID (debug)
-            <input
-              value={playerId}
-              onChange={(e) => setPlayerId(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-            />
-          </label>
-          <button
-            onClick={handleJoin}
-            disabled={!connected}
-            className="mt-2 w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {connected ? "Join game" : "Connecting..."}
-          </button>
+          <h2>You are just waiting bro</h2>
         </section>
       )}
+
+      <h1>hahah {messages.length}</h1>
 
       {/* Guess section */}
-      {joined && (
-        <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-slate-100">Your guess</h2>
-            <span>{guess.reduce((acc, cur) => acc + Number(cur), 0)}</span>
-            <span className="text-xs text-slate-400">
-              Player: <span className="font-mono">{playerId}</span>
-            </span>
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            {guess.map((value, idx) => (
-              <div
-                key={idx}
-                className="flex flex-col items-center gap-1 text-xs"
-              >
-                <span className="text-slate-400">#{idx + 1}</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={value}
-                  onChange={(e) => handleGuessChange(idx, e.target.value)}
-                  className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-center text-sm text-slate-100"
-                />
-              </div>
-            ))}
-          </div>
+      <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-slate-100">Your guess</h2>
+          <span>{guess.reduce((acc, cur) => acc + Number(cur), 0)}</span>
+          <span className="text-xs text-slate-400">
+            Player: <span className="font-mono">{playerId}</span>
+          </span>
+        </div>
 
-          <button
-            onClick={handleSendGuess}
-            disabled={!connected || !joined}
-            className="mt-2 w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Send guess
-          </button>
-
-          {lastState && lastState.status === "FINISHED" && (
-            <div className="mt-3 rounded-md bg-emerald-900/40 px-3 py-2 text-xs text-emerald-100">
-              {lastState.winnerId
-                ? `Game finished. Winner: ${lastState.winnerId}`
-                : "Game finished in a draw."}
+        <div className="flex flex-wrap gap-3">
+          {guess.map((value, idx) => (
+            <div key={idx} className="flex flex-col items-center gap-1 text-xs">
+              <span className="text-slate-400">#{idx + 1}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={value}
+                onChange={(e) => handleGuessChange(idx, e.target.value)}
+                className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-center text-sm text-slate-100"
+              />
             </div>
-          )}
-        </section>
-      )}
+          ))}
+        </div>
+
+        <button
+          onClick={handleSendGuess}
+          disabled={!connected}
+          className="mt-2 w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Send guess
+        </button>
+
+        {lastState && lastState.status === "FINISHED" && (
+          <div className="mt-3 rounded-md bg-emerald-900/40 px-3 py-2 text-xs text-emerald-100">
+            {lastState.winnerId
+              ? `Game finished. Winner: ${lastState.winnerId}`
+              : "Game finished in a draw."}
+          </div>
+        )}
+      </section>
 
       {/* Raw messages (debug) */}
-      <section className="max-h-64 overflow-auto rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+      <section className="max-h-200 overflow-auto rounded-lg border border-slate-700 bg-slate-900/60 p-3">
         <h2 className="text-xs font-semibold text-slate-300">Raw updates</h2>
         <pre className="mt-1 text-[11px] text-slate-400">
           {messages.length === 0
@@ -273,6 +213,14 @@ export default function GameRoomPage() {
             : JSON.stringify(messages, null, 2)}
         </pre>
       </section>
+
+      <CustomModal
+        open={showNameModal}
+        setOpen={setShowNameModal}
+        onConfirm={handleContinueName}
+        setValue={setName}
+        value={name}
+      />
     </div>
   );
 }
