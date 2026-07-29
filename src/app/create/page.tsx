@@ -11,20 +11,6 @@ export default function CreateGamePage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const handleCreate = async () => {
-    setLoading(true);
-    setError(null);
-    setCopied(false);
-    try {
-      const { code } = await GameService.createGame();
-      setCode(code);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error creating game.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleGoToGame = () => {
     if (!code) return;
     router.push(`/play/${code}`);
@@ -47,14 +33,6 @@ export default function CreateGamePage() {
           Create a new room and share the link or code with your friend.
         </p>
       </div>
-
-      <button
-        onClick={handleCreate}
-        disabled={loading}
-        className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? "Creating..." : "Create game"}
-      </button>
 
       {error && (
         <p className="text-sm text-red-400" role="alert">

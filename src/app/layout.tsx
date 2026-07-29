@@ -36,9 +36,11 @@ export default function RootLayout({
       lang="en"
       className={`${autour.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      {/* <NavBar /> */}
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">
-        {children}
+      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 ">
+        <NavBar />
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10">
+          {children}
+        </div>
       </body>
       {/* <Footer /> */}
     </html>

@@ -10,7 +10,14 @@ export default function PlayPage() {
   const handleJoinByCode = () => {
     const trimmed = code.trim();
     if (!trimmed) return;
-    router.push(`/play/${trimmed}`);
+    router.push(`/play/${trimmed}?needsJoin=0`);
+  };
+
+  const [open, setOpen] = useState<boolean>(false);
+
+  const handleContinue = () => {
+    setOpen(false);
+    router.push("/play-online");
   };
 
   return (

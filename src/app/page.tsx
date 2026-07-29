@@ -3,11 +3,14 @@
 import { useRouter } from "next/navigation";
 import Example from "./components/common/CustomModal";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CustomModal from "./components/common/CustomModal";
 import useMatchMaking from "@/hooks/useMatchMaking";
 import { GameStateResponse } from "@/services/types";
 import { match } from "assert";
+import HomeCard from "./components/pages/HomeCard";
+import { getOrCreateIdentity, setStoredIdentity } from "@/lib/playerIdentity";
+import { GameService } from "@/services/game";
 
 type Card = {
   title: string;
@@ -26,13 +29,13 @@ const cards: Card[] = [
   {
     title: "Join by Code",
     description: "Enter a room code you received from a friend.",
-    href: "/join",
+    href: "/play",
     accent: "from-emerald-500 to-emerald-400",
   },
   {
     title: "Play Online",
-    description: "Find an opponent online (or extend this later).",
-    href: "/play",
+    description: "Play with a random opponent.",
+    href: "/play-online",
     accent: "from-purple-500 to-purple-400",
   },
   {
@@ -43,27 +46,36 @@ const cards: Card[] = [
   },
 ];
 
-const NAME_KEY = "hundredgame:name";
-const PLAYER_ID_KEY = "hundredgame:playerId";
-
 export default function HomePage() {
   const router = useRouter();
 
-  const [open, setOpen] = useState<boolean>(false);
-  const [playerId, setPlayerId] = useState<string>(
-    "player-" + Math.random().toString(36).slice(2, 8)
-  );
+  const [openModal, setOpenModal] = useState<boolean>(false);
+  const [playerId, setPlayerId] = useState<string>("");
   const [name, setName] = useState<string>("");
+
+  useEffect(() => {
+    const { name: storedName, playerId: storedPlayerId } =
+      getOrCreateIdentity();
+    setPlayerId(storedName);
+    setName(storedPlayerId);
+  }, []);
+
   const { matchmake, loading, error } = useMatchMaking();
 
   const handleContinue = async () => {
     const trimmed = name.trim();
     if (trimmed == "") return;
 
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(NAME_KEY, trimmed);
-      window.localStorage.setItem(PLAYER_ID_KEY, playerId);
+    let newPlayerId = playerId;
+    if (!newPlayerId) {
+      alert("No player ID found. Generating a new one.");
+      newPlayerId = "player-" + Math.random().toString(36).slice(2, 8);
     }
+
+    console.log("Setting player ID to:", newPlayerId);
+
+    setPlayerId(newPlayerId);
+    setStoredIdentity(trimmed, newPlayerId);
 
     const state: GameStateResponse | null = await matchmake(name, playerId);
 
@@ -72,50 +84,57 @@ export default function HomePage() {
       return;
     }
 
-    setOpen(false);
-
-    console.log("this is the code used", state.code);
+    setOpenModal(false);
 
     router.push(`/play/${state.code}?needsJoin=0`);
+  };
+
+  const handleCardClick = async (href: string) => {
+    if (href === "/play-online" || href === "/create") {
+      if (name.length === 0) {
+        setOpenModal(true);
+        return;
+      } else if (href === "/play-online") {
+        alert(`Starting matchmaking for ${playerId}...`);
+        const state: GameStateResponse | null = await matchmake(name, playerId);
+        console.log("state of matchmaking", state);
+        if (!state) {
+          console.error("Matchmaking failed.");
+          return;
+        }
+        router.push(`/play/${state.code}?needsJoin=0`);
+        return;
+      } else if (href === "/create") {
+        console.log("aramaki");
+        const { code } = await GameService.createGame(name, playerId);
+        router.push(`/play/${code}?needsJoin=0`);
+        return;
+      }
+    }
+    router.push(href);
   };
 
   return (
     <div className="flex flex-col gap-8">
       <section>
         <h1 className="text-3xl font-semibold">The Hundred Game</h1>
-        <p className="mt-2 text-slate-300">
-          A 1v1 number game. Create a room, share it with a friend, and try to
-          sync your guesses.
+        <p className="mt-2 ">
+          A 1v1 number game. Just add numbers to a 100. More fun than you think.
         </p>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
         {cards.map((card) => (
-          <button
+          <HomeCard
             key={card.title}
-            onClick={() => {
-              if (!open && card.href === "/play-online") {
-                setOpen(true);
-                return;
-              }
-
-              return router.push(card.href);
-            }}
-            className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-left transition hover:border-slate-600 hover:bg-slate-900"
-          >
-            <div
-              className={`pointer-events-none absolute inset-x-0 -top-10 h-20 bg-gradient-to-r ${card.accent} opacity-0 blur-2xl transition group-hover:opacity-40`}
-            />
-            <h2 className="relative text-lg font-medium">{card.title}</h2>
-            <p className="relative mt-1 text-sm text-slate-300">
-              {card.description}
-            </p>
-          </button>
+            card={card}
+            onClick={() => handleCardClick(card.href)}
+          />
         ))}
       </section>
       <CustomModal
-        open={open}
-        setOpen={setOpen}
+        openModal={openModal}
+        setOpenModal={setOpenModal}
         onConfirm={handleContinue}
         setValue={setName}
         value={name}
